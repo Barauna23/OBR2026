@@ -1,0 +1,429 @@
+# ================= IMPORTS =================
+from pybricks.hubs import PrimeHub
+from pybricks.pupdevices import Motor, ColorSensor
+from pybricks.parameters import Direction, Port
+from pybricks.robotics import DriveBase
+from pybricks.tools import wait
+
+
+# ================= INICIALIZAÇÃO =================
+
+hub = PrimeHub()
+
+# Motores
+motor_esq = Motor(Port.A, Direction.CLOCKWISE)
+motor_dir = Motor(Port.B, Direction.COUNTERCLOCKWISE)
+
+# Sensores
+sensor_dir = ColorSensor(Port.C)
+sensor_esq = ColorSensor(Port.D)
+
+# Base do robô
+xambao = DriveBase(motor_esq, motor_dir, 52, 179)
+
+
+# ================= CONFIGURAÇÕES =================
+
+# Limites de reflexão
+limite_preto = 28
+limite_branco = 80
+
+# Configuração do verde
+h_verde_min = 155
+h_verde_max = 175
+s_verde_min = 75
+v_verde_min = 65
+
+# PID do seguidor de linha
+kp = 1.2
+ki = 0.0005
+kd = 0.8
+
+integral = 0
+last_error = 0
+
+# Contador de interseções
+contador_pretos = 0
+
+# Configuração do gyro
+GYRO_TOL = 2
+GYRO_MIN = 20
+GYRO_MAX = 70
+
+
+# ================= FUNÇÕES =================
+
+
+def is_green(hsv):
+    """
+    Detecta se a leitura HSV pertence à faixa do verde.
+    """
+
+    h = hsv.h
+    s = hsv.s
+    v = hsv.v
+
+    return (
+        h_verde_min <= h <= h_verde_max
+        and s >= s_verde_min
+        and v >= v_verde_min
+    )
+
+
+# =========================================================
+# FUNÇÃO DE GIRO COM GYRO + PID
+# =========================================================
+
+def GyroTurn(graus):
+    """
+    Faz o robô girar usando o giroscópio.
+    """
+
+    kp_turn = 3.2
+    kd_turn = 1.2
+
+    erro_anterior = 0
+
+    # Zera heading
+    hub.imu.reset_heading(0)
+    wait(100)
+
+    alvo = graus
+
+    while True:
+
+        atual = hub.imu.heading()
+
+        # Calcula erro angular
+        erro = alvo - atual
+
+        # Derivada
+        derivada = erro - erro_anterior
+
+        # PID
+        correcao = (kp_turn * erro) + (kd_turn * derivada)
+
+        erro_anterior = erro
+
+        # Limita potência
+        potencia = int(min(GYRO_MAX, max(GYRO_MIN, abs(correcao))))
+
+        # Verifica se chegou
+        if abs(erro) <= GYRO_TOL:
+            break
+
+        # Gira
+        if erro > 0:
+            motor_esq.dc(potencia)
+            motor_dir.dc(-potencia)
+        else:
+            motor_esq.dc(-potencia)
+            motor_dir.dc(potencia)
+
+        wait(10)
+
+    # Para motores
+    motor_esq.dc(0)
+    motor_dir.dc(0)
+
+    wait(100)
+
+
+# =========================================================
+# MOVIMENTO RETO COM CORREÇÃO DE GYRO
+# =========================================================
+
+def GyroMove(rotacoes, velocidade, reverso=False):
+    """
+    Anda reto utilizando correção pelo giroscópio.
+    """
+
+    global integral
+    global last_error
+
+    # Reseta encoders
+    motor_esq.reset_angle(0)
+    motor_dir.reset_angle(0)
+
+    # Reseta gyro
+    hub.imu.reset_heading(0)
+
+    wait(100)
+
+    alvo = 0
+
+    while True:
+
+        # Rotação média
+        rot_esq = abs(motor_esq.angle() / 360)
+        rot_dir = abs(motor_dir.angle() / 360)
+
+        rot_media = (rot_esq + rot_dir) / 2
+
+        # Verifica distância
+        if rot_media >= rotacoes:
+            break
+
+        # Erro do gyro
+        erro = alvo - hub.imu.heading()
+
+        # PID
+        integral += erro
+
+        # Anti windup
+        integral = max(-100, min(100, integral))
+
+        derivada = erro - last_error
+
+        correcao = (2.2 * erro) + (0.01 * integral) + (1.1 * derivada)
+
+        last_error = erro
+
+        # Movimento
+        if reverso:
+            vel_esq = -(velocidade - correcao)
+            vel_dir = -(velocidade + correcao)
+        else:
+            vel_esq = velocidade - correcao
+            vel_dir = velocidade + correcao
+
+        # Clamp
+        vel_esq = max(-100, min(100, vel_esq))
+        vel_dir = max(-100, min(100, vel_dir))
+
+        # Aplica potência
+        motor_esq.dc(int(vel_esq))
+        motor_dir.dc(int(vel_dir))
+
+        wait(10)
+
+    # Para motores
+    motor_esq.dc(0)
+    motor_dir.dc(0)
+
+    wait(100)
+
+
+# =========================================================
+# DETECÇÃO DE CURVA
+# =========================================================
+
+def detectar_curva():
+    """
+    Detecta curvas fortes.
+    """
+
+    ref_dir = sensor_dir.reflection()
+    ref_esq = sensor_esq.reflection()
+
+    # Curva direita
+    if ref_dir > 75 and ref_esq < 20:
+        return "direita"
+
+    # Curva esquerda
+    if ref_esq > 75 and ref_dir < 20:
+        return "esquerda"
+
+    return None
+
+
+# =========================================================
+# VERIFICAÇÃO DO VERDE
+# =========================================================
+
+def handle_green():
+    """
+    Trata verdes.
+    """
+
+    verde_dir = is_green(sensor_dir.hsv())
+    verde_esq = is_green(sensor_esq.hsv())
+
+    # Dois verdes
+    if verde_dir and verde_esq:
+
+        print("VERDE DUPLO")
+
+        GyroMove(0.2, 40, reverso=True)
+
+        GyroTurn(180)
+
+        return True
+
+    # Verde esquerdo
+    if verde_esq:
+
+        print("VERDE ESQUERDO")
+
+        GyroMove(0.2, 40, reverso=True)
+
+        GyroTurn(-90)
+
+        return True
+
+    # Verde direito
+    if verde_dir:
+
+        print("VERDE DIREITO")
+
+        GyroMove(0.2, 40, reverso=True)
+
+        GyroTurn(90)
+
+        return True
+
+    return False
+
+
+# =========================================================
+# SEGUIDOR DE LINHA PID
+# =========================================================
+
+def seguidor(velocidade):
+
+    global integral
+    global last_error
+
+    while True:
+
+        # Leituras
+        ref_dir = sensor_dir.reflection()
+        ref_esq = sensor_esq.reflection()
+
+        # ==========================================
+        # VERDE
+        # ==========================================
+
+        if handle_green():
+            continue
+
+        # ==========================================
+        # CURVAS
+        # ==========================================
+
+        curva = detectar_curva()
+
+        if curva == "direita":
+
+            print("CURVA DIREITA")
+
+            GyroTurn(90)
+
+            continue
+
+        elif curva == "esquerda":
+
+            print("CURVA ESQUERDA")
+
+            GyroTurn(-90)
+
+            continue
+
+        # ==========================================
+        # DOIS PRETOS
+        # ==========================================
+
+        if ref_dir <= limite_preto and ref_esq <= limite_preto:
+
+            print("DOIS PRETOS")
+
+            motor_esq.dc(0)
+            motor_dir.dc(0)
+
+            wait(100)
+
+            # ======================================
+            # CONTADOR DE INTERSEÇÕES
+            # ======================================
+
+            global contador_pretos
+
+            contador_pretos += 1
+
+            print("CONTADOR:", contador_pretos)
+
+            # PRIMEIRA INTERSEÇÃO
+            if contador_pretos == 1:
+
+                print("PRIMEIRA INTERSEÇÃO")
+
+                # Anda 1 rotação para frente
+                GyroMove(1, 50)
+
+                continue
+
+            # SEGUNDA INTERSEÇÃO
+            elif contador_pretos == 2:
+
+                print("SEGUNDA INTERSEÇÃO")
+
+                # Anda 0.5 rotação para frente
+                GyroMove(0.5, 50)
+
+                continue
+
+            # RESTANTE DAS INTERSEÇÕES
+            else:
+
+                print("INTERSEÇÃO NORMAL")
+
+                GyroMove(0.3, 50)
+
+                continue
+
+        # ==========================================
+        # PID
+        # ==========================================
+
+        erro = ref_dir - ref_esq
+
+        integral += erro
+
+        # Anti windup
+        integral = max(-100, min(100, integral))
+
+        derivada = erro - last_error
+
+        correcao = (kp * erro) + (ki * integral) + (kd * derivada)
+
+        last_error = erro
+
+        # Potência dos motores
+        potencia_esq = velocidade - correcao
+        potencia_dir = velocidade + correcao
+
+        # Clamp
+        potencia_esq = max(-100, min(100, potencia_esq))
+        potencia_dir = max(-100, min(100, potencia_dir))
+
+        # Movimento
+        motor_esq.dc(int(potencia_esq))
+        motor_dir.dc(int(potencia_dir))
+
+        wait(10)
+
+
+# =========================================================
+# MAIN
+# =========================================================
+
+def main():
+
+    print("CALIBRANDO...")
+
+    wait(2000)
+
+    # Zera gyro
+    hub.imu.reset_heading(0)
+
+    print("INICIANDO")
+
+    seguidor(50)
+
+
+# =========================================================
+# START
+# =========================================================
+
+main()
+
