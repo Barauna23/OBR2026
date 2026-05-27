@@ -22,9 +22,12 @@ axle_track = 179
 xambao = DriveBase(motor_esq, motor_dir, wheel_diameter, axle_track)
 
 # -- CONSTANTES ---
-curvas = False
-curva_esq = False
-curva_dir = False
+
+
+reflexo_esq = sensor_esq.reflection()
+reflexo_dir = sensor_dir.reflection()
+hsv_dir = sensor_esq.hsv()
+hsv_esq = sensor_dir.hsv()
 
 qnt_erros = 0
 
@@ -56,33 +59,7 @@ def PID(kp, ki, kd):
     integral += erro
     derivative = erro - last_error
     correcao = (kp * erro) + (ki * integral) + (kd * derivative)
-    last_error = erro
-
-# --- o que fazer ao detectar curvas
-
-
-
-def deteccao_de_curvas():
-    if sensor_dir.reflection() - sensor_esq.reflection() >= 40:
-        curva_esq = True
-
-    if sensor_dir.reflection() - sensor_esq.reflection() <= -40:
-        curva_dir = True
-
-
-
-def handle_curvas():
-    
-    if curva_dir == True:
-        xambao.stop
-        print('eu sou boçal')
-    if curva_esq == True:
-        xambao.stop 
-        print("sou boçal")
-
-
-        
-    
+    last_error = erro   
     
 def is_green(hsv):
     h = hsv.h
@@ -92,42 +69,40 @@ def is_green(hsv):
 
 
 def handle_green():
-    if is_green(sensor_dir.hsv()):
-        if is_green(sensor_dir.hsv()) and is_green(sensor_esq.hsv()):
-            GyroTurn(180)
-        elif is_green(sensor_dir()):
-         GyroMove(0.2, 50, reverso=True)
-    if sensor_esq.reflection() <= limite_preto and sensor_esq.reflection() <= limite_preto:
-            GyroMove(0.5, 50)
-            print("preto ambos")
-    else:
-        print("VERIFICADO!!")
-        GyroMove(0.4, 50)
-        GyroTurn(90)
 
-    if is_green(sensor_esq.hsv()):
-        print("verde esquerda")
-        xambao.stop()
-        GyroMove(0.2, 50, reverso=True)
-        if sensor_dir.reflection() <= limite_preto and sensor_esq.reflection() <= limite_preto:
-            GyroMove(0.5, 50)
-            print("preto ambos")
+    '''verde direita'''
+    if is_green(sensor_dir.hsv()) and not is_green(sensor_esq.hsv()):
+        GyroMove(0.2, 40, reverso=True)
+        if reflexo_dir <= limite_preto:
+            GyroMove(0.5, 40)
+            print('preto antes do verde')
         else:
-            print("VERIFICADO!!")
-            GyroMove(0.4, 50)
+            print('verificado verde dir')
+            GyroMove(1.2, 40)
+            GyroTurn(90)
+    
+        ''' verde esquerdo '''
+    if is_green(sensor_esq.hsv()) and not is_green(sensor_dir.hsv()):
+        GyroMove(0.2, 40, reverso=True)
+        if reflexo_esq <= limite_preto:
+            GyroMove(0.5, 40)
+            print('preto antes do verde')
+        else:
+            print('verificado verde esq')
+            GyroMove(1.2, 40)
             GyroTurn(-90)
 
-    elif is_green(sensor_dir.hsv()) and is_green(sensor_esq.hsv()):
-        print("verde ambos")
-        xambao.stop()
-        GyroMove(0.2, 50, reverso=True)
-        if sensor_dir.reflection() <= limite_preto and sensor_esq.reflection() <= limite_preto:
-            GyroMove(0.5, 50)
-            print("preto ambos")
+        ''' verde ambos '''
+    
+    if is_green(sensor_esq.hsv()) and is_green(sensor_dir.hsv()):
+        GyroMove(0.2, 40, reverso=True)
+        if reflexo_esq <= limite_preto or reflexo_dir <= limite_preto:
+            GyroMove(0.5, 40)
+            print('preto antes do verde')
         else:
-            print("VERIFICADO!!")
-            GyroMove(0.4, 50)
+            print('verificado verde ambos')
             GyroTurn(180)
+            wait(200)
 
 def GyroMove(rotacoes, velocidade_final, reverso=False):
     global erro, correcao
@@ -219,17 +194,12 @@ def seguidor(velocidade):
     right_power = velocidade
 
     while True:
-        deteccao_de_curvas()
         erro = sensor_dir.reflection() - sensor_esq.reflection()
         correcao = (kp * erro) + (ki * integral) + (kd * derivative)
         PID(kp, ki, kd)
+
         if is_green(sensor_dir.hsv()) or is_green(sensor_esq.hsv()):
             handle_green()
-            continue
-
-        if curva_dir != False:
-            handle_curvas()
-            continue
 
         motor_esq.dc(left_power - correcao)
         motor_dir.dc(right_power + correcao)
@@ -242,6 +212,7 @@ def seguidor(velocidade):
 
 # --- MAIN LOOP ---
 def main():
+
     seguidor(50)
     #GyroMove(2, 100)
 
