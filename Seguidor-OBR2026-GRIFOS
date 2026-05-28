@@ -69,40 +69,26 @@ def is_green(hsv):
 
 
 def handle_green():
+    if is_green(sensor_dir.hsv()) or is_green(sensor_esq.hsv()):
+        motor_dir.stop()
+        motor_esq.stop()
+        print(sensor_dir.hsv(), sensor_esq.hsv())
+        wait(2000)
+        #================ VERDE DIREITOO
+        if is_green(sensor_dir.hsv()) and not is_green(sensor_esq.hsv()):
+            print('verificar verde direito')
+            GyroMove(0.3, 40, reverso=True)
+            if sensor_dir.reflection() <= limite_preto:
+                print('preto antes do verde! ignorando', reflexo_dir, reflexo_esq)
+                GyroMove(0.5, 40)
+            else:
+                print('sem preto atras! virando')
+                GyroMove(1.5, 40)
+                GyroTurn(90)
 
-    '''verde direita'''
-    if is_green(sensor_dir.hsv()) and not is_green(sensor_esq.hsv()):
-        GyroMove(0.2, 40, reverso=True)
-        if reflexo_dir <= limite_preto:
-            GyroMove(0.5, 40)
-            print('preto antes do verde')
-        else:
-            print('verificado verde dir')
-            GyroMove(1.2, 40)
-            GyroTurn(90)
-    
-        ''' verde esquerdo '''
-    if is_green(sensor_esq.hsv()) and not is_green(sensor_dir.hsv()):
-        GyroMove(0.2, 40, reverso=True)
-        if reflexo_esq <= limite_preto:
-            GyroMove(0.5, 40)
-            print('preto antes do verde')
-        else:
-            print('verificado verde esq')
-            GyroMove(1.2, 40)
-            GyroTurn(-90)
 
-        ''' verde ambos '''
-    
-    if is_green(sensor_esq.hsv()) and is_green(sensor_dir.hsv()):
-        GyroMove(0.2, 40, reverso=True)
-        if reflexo_esq <= limite_preto or reflexo_dir <= limite_preto:
-            GyroMove(0.5, 40)
-            print('preto antes do verde')
-        else:
-            print('verificado verde ambos')
-            GyroTurn(180)
-            wait(200)
+
+
 
 def GyroMove(rotacoes, velocidade_final, reverso=False):
     global erro, correcao
