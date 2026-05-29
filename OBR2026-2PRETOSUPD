@@ -23,6 +23,7 @@ xambao = DriveBase(motor_esq, motor_dir, 52, 179)
 
 
 # ================= CONFIGURAÇÕES =================
+souverde = False
 
 # Limites de reflexão
 limite_preto = 28
@@ -232,51 +233,46 @@ def detectar_curva():
 # =========================================================
 
 def handle_green():
-    """
-    Trata verdes.
-    """
+    if is_green(sensor_dir.hsv()) or is_green(sensor_esq.hsv()):
+        motor_dir.hold()
+        motor_esq.hold()
+        wait(100)
 
-    verde_dir = is_green(sensor_dir.hsv())
-    verde_esq = is_green(sensor_esq.hsv())
+        if is_green(sensor_dir.hsv()) and is_green(sensor_esq.hsv()):
+            print('verificando verde duplo')
+            GyroMove(0.15, 40, reverso=True)
+            if sensor_dir.reflection() <= limite_preto or sensor_esq.reflection() <= limite_preto:
+                print('preto antes! ignorando')
+                GyroMove(0.5, 40)
+            else:
+                print('sem preto atras! virando')
+                GyroTurn(180)
 
-    # Dois verdes
-    if verde_dir and verde_esq:
-
-        print("VERDE DUPLO")
-
-        GyroMove(0.2, 40, reverso=True)
-
-        GyroTurn(180)
-
-        return True
-
-    # Verde esquerdo
-    if verde_esq:
-
-        print("VERDE ESQUERDO")
-
-        GyroMove(0.2, 40, reverso=True)
-
-        GyroTurn(-90)
-
-        return True
-
-    # Verde direito
-    if verde_dir:
-
-        print("VERDE DIREITO")
-
-        GyroMove(0.2, 40, reverso=True)
-
-        GyroTurn(90)
-
-        return True
-
-    return False
-
+        #================= VERDE ESQUERDO ==================================
+        if is_green(sensor_esq.hsv()) and not is_green(sensor_dir.hsv()):
+            print('verificar verde esquerdo')
+            GyroMove(0.15, 40, reverso=True)
+            if sensor_esq.reflection() <= limite_preto:
+                print('preto antes do verde! ignorando', reflexo_dir, reflexo_esq)
+                GyroMove(0.5, 40)
+            else:
+                print('sem preto atras! virando')
+                GyroMove(1.5, 40)
+                GyroTurn(-90)
+        #================= VERDE DIREITO ==================================
+        if is_green(sensor_dir.hsv()) and not is_green(sensor_esq.hsv()):
+            print('verificar verde direito')
+            GyroMove(0.15, 40, reverso=True)
+            if sensor_dir.reflection() <= limite_preto:
+                print('preto antes do verde! ignorando', reflexo_dir, reflexo_esq)
+                GyroMove(0.5, 40)
+            else:
+                print('sem preto atras! virando')
+                GyroMove(1.5, 40)
+                GyroTurn(90)
 
 # =========================================================
-# SEGUIDOR DE LINHA PID
+#                SEGUIDOR DE LINHA PID
 # =========================================================
 
 def seguidor(velocidade):
@@ -291,14 +287,14 @@ def seguidor(velocidade):
         ref_esq = sensor_esq.reflection()
 
         # ==========================================
-        # VERDE
+        #                  VERDE
         # ==========================================
 
         if handle_green():
             continue
 
         # ==========================================
-        # CURVAS
+        #                 CURVAS
         # ==========================================
 
         curva = detectar_curva()
@@ -306,7 +302,8 @@ def seguidor(velocidade):
         if curva == "direita":
 
             print("CURVA DIREITA")
-
+            xambao.stop()
+            GyroMove(0.8, 40)
             GyroTurn(90)
 
             continue
@@ -314,13 +311,14 @@ def seguidor(velocidade):
         elif curva == "esquerda":
 
             print("CURVA ESQUERDA")
-
+            xambao.stop()
+            GyroMove(0.8, 40)
             GyroTurn(-90)
 
             continue
 
         # ==========================================
-        # DOIS PRETOS
+        #               DOIS PRETOS
         # ==========================================
 
         if ref_dir <= limite_preto and ref_esq <= limite_preto:
@@ -333,7 +331,7 @@ def seguidor(velocidade):
             wait(100)
 
             # ======================================
-            # CONTADOR DE INTERSEÇÕES
+            #        CONTADOR DE INTERSEÇÕES
             # ======================================
 
             global contador_pretos
@@ -372,7 +370,7 @@ def seguidor(velocidade):
                 continue
 
         # ==========================================
-        # PID
+        #                    PID
         # ==========================================
 
         erro = ref_dir - ref_esq
@@ -404,7 +402,7 @@ def seguidor(velocidade):
 
 
 # =========================================================
-# MAIN
+#                         MAIN
 # =========================================================
 
 def main():
@@ -422,8 +420,9 @@ def main():
 
 
 # =========================================================
-# START
+#                           START
 # =========================================================
 
 main()
+
 
